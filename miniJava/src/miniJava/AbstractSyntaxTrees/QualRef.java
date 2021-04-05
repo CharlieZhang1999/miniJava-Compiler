@@ -21,5 +21,5 @@ public class QualRef extends Reference {
 	}
 
 	public Reference ref;
-	public Identifier id;
+	// public Identifier id;
 }

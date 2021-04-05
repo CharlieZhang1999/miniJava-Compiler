@@ -1,11 +1,21 @@
 package miniJava.SyntacticAnalyzer;
 
 public class SourcePosition {
-	public int x;
-	public int y;
+	public int start;
+	public int finish;
 	
-	public SourcePosition(int x, int y) {
-		this.x = x;
-		this.y = y;
+	public SourcePosition(int start, int finish) {
+		this.start = start;
+		this.finish = finish;
+	}
+	public SourcePosition() {
+		this.start = 0;
+		this.finish = 0;
+	}
+	public SourcePosition(int start) {
+		this.start = start;
+	}
+	public String toString() {
+		return "*** line "+this.start+": ";
 	}
 }

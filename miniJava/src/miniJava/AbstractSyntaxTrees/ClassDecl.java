@@ -6,6 +6,7 @@
 package miniJava.AbstractSyntaxTrees;
 
 import  miniJava.SyntacticAnalyzer.SourcePosition;
+import java.util.*;
 
 public class ClassDecl extends Declaration {
 
@@ -13,6 +14,7 @@ public class ClassDecl extends Declaration {
 	  super(cn, null, posn);
 	  fieldDeclList = fdl;
 	  methodDeclList = mdl;
+	  memberTable = new HashMap<>();
   }
   
   public <A,R> R visit(Visitor<A, R> v, A o) {
@@ -21,4 +23,7 @@ public class ClassDecl extends Declaration {
       
   public FieldDeclList fieldDeclList;
   public MethodDeclList methodDeclList;
+  //
+  
+  public HashMap<String, Declaration> memberTable;
 }

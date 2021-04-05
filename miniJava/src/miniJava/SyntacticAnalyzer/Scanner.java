@@ -18,6 +18,7 @@ public class Scanner {
 	
 	private char currentChar;
 	private StringBuilder currentSpelling;
+	private int currentLine;
 	
 	// true when end of line is found
 	private boolean eot = false; 
@@ -51,6 +52,9 @@ public class Scanner {
 			put("true", TokenKind.TRUE);
 			put("false", TokenKind.FALSE);
 			put("new", TokenKind.NEW);
+			
+			// null literal
+			put("null", TokenKind.NULL);
 		}};
 		
 		this.punctHashmap = new HashMap<String, TokenKind>(){{
@@ -58,6 +62,8 @@ public class Scanner {
 			put(".", TokenKind.DOT);
 			put(";", TokenKind.SEMICOLON);
 		}};
+		
+		this.currentLine = 1;
 		// initialize scanner state
 		readChar();
 	}
@@ -72,8 +78,12 @@ public class Scanner {
 		currentSpelling = new StringBuilder();
 		TokenKind kind = scanToken();
 		String spelling = currentSpelling.toString();
+		
+		// initialize the token's start position and end position with current line number
+		SourcePosition sp = new SourcePosition(currentLine, currentLine);
+		
 		// return new token
-		return new Token(kind, spelling);
+		return new Token(kind, spelling, sp);
 	}
 	
 	/**
@@ -253,7 +263,7 @@ public class Scanner {
 		case 'U': case 'V': case 'W': case 'X': case 'Y': 
 		case 'Z':
 			while(isLetterOrDigit(currentChar) | currentChar == '_') {
-				takeIt();
+				takeIt(); 
 			}
 			// Group 3: KEYWORD
 			if(this.kwdHashmap.containsKey(currentSpelling.toString())) {
@@ -326,6 +336,9 @@ public class Scanner {
 			currentChar = (char) c;
 			if (c == -1) {
 				eot = true;
+			}
+			if(c == newlines) {
+				currentLine = currentLine + 1;
 			}
 		} catch (IOException e) {
 			scanError("I/O Exception!");

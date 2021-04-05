@@ -12,5 +12,6 @@ public abstract class Statement extends AST {
   public Statement(SourcePosition posn) {
     super (posn);
   }
+  public TypeDenoter returnType;
 
 }

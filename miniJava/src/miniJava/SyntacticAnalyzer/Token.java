@@ -11,4 +11,10 @@ public class Token {
 		this.kind = kind;
 		this.spelling = spelling;
 	}
+	
+	public Token(TokenKind kind, String spelling, SourcePosition posn) {
+		this.kind = kind;
+		this.spelling = spelling;
+		this.posn = posn;
+	}
 }
