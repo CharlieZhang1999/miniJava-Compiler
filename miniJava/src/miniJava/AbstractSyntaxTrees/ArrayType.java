@@ -21,6 +21,8 @@ public class ArrayType extends TypeDenoter {
 
 	    public TypeDenoter eltType;
 	    
+	    // PA 4
+	    int length; 
 	    public boolean equals(TypeDenoter t) {
 	    	if(eltType.typeKind ==  TypeKind.UNSUPPORTED || eltType.typeKind == TypeKind.ERROR) {
 	    		return false;
@@ -31,21 +33,45 @@ public class ArrayType extends TypeDenoter {
 	    	else if(t.typeKind == TypeKind.NULL) {
 	    		return true;
 	    	}
-	    	else if(!(t instanceof ArrayType) || ((ArrayType) t).eltType == null) {
-	    		return false;
-	    	}
-	    	else if(this.eltType instanceof ClassType && ((ArrayType) t).eltType instanceof ClassType) {
-	    		if(((ClassType) this.eltType).className.spelling.equals(((ClassType) ((ArrayType) t).eltType).className.spelling)){
+	    	// rhs is BaseType
+	    	else if(t instanceof BaseType) {
+	    		if(this.eltType instanceof BaseType && this.eltType.typeKind == t.typeKind) {
 	    			return true;
+	    		}
+	    		else {
+	    			return false;
+	    		}
+	    	}
+	    	//rhs is ClassType
+	    	else if(t instanceof ClassType) {
+	    		if(this.eltType instanceof ClassType) {
+	    			if(((ClassType) this.eltType).className.spelling.equals(((ClassType) t).className.spelling)){
+		    			return true;
+		    		}
+	    			else return false;
 	    		}
 	    		else return false;
 	    	}
-	    	else if(this.eltType.typeKind == ((ArrayType) t).eltType.typeKind) {
-	    		return true;
+	    	// rhs is ArrayType[]
+	    	else if(t instanceof ArrayType) {
+	    		//ArrayType[ClassType]
+	    		if(this.eltType instanceof ClassType && ((ArrayType) t).eltType instanceof ClassType) {
+		    		if(((ClassType) this.eltType).className.spelling.equals(((ClassType) ((ArrayType) t).eltType).className.spelling)){
+		    			return true;
+		    		}
+		    		else return false;
+	    		}
+	    		//ArrayType[BaseTypeType]
+	    		else if(this.eltType instanceof BaseType && ((ArrayType) t).eltType instanceof BaseType && this.eltType.typeKind == ((ArrayType) t).eltType.typeKind) {
+	    			return true;
+	    		}
+	    		
+		    	else{
+		    		return false;
+		    	}
 	    	}
-	    	else{
-	    		return false;
-	    	}
-	    }
+	    	else return false;
+	    
 	}
+}
 

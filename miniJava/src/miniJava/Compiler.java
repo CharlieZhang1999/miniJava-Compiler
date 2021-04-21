@@ -2,6 +2,7 @@ package miniJava;
 import java.io.File;
 
 
+
 import java.io.FileInputStream;  
 import java.io.FileNotFoundException;
 import java.io.InputStream;
@@ -14,6 +15,7 @@ import miniJava.*;
 import miniJava.AbstractSyntaxTrees.*;
 import miniJava.ContextualAnalyzer.*;
 import miniJava.AbstractSyntaxTrees.Package;
+import miniJava.CodeGenerator.*;
 public class Compiler {	
 	private static char currentChar;
 	
@@ -41,12 +43,14 @@ public class Compiler {
 		System.out.println("Syntactic Analysis Succeeded! Valid program.");
 		Identification id = new Identification((Package)ast, reporter);
 		IdentificationTable table = id.getTable();
-		TypeChecking tc = new TypeChecking((Package) ast, reporter, table);
+		new TypeChecking((Package) ast, reporter, table);
+		
 		if(reporter.hasErrors()) {
 			System.out.println("Contextual Analysis Failed! Invalid program.");
 			// Error parsing the file, return 4
 			System.exit(4);
 		}
+		CodeGenerator cg = new CodeGenerator((Package)ast, reporter);
 		
 		ASTDisplay td = new ASTDisplay();
 		td.showTree(ast);

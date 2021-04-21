@@ -70,12 +70,13 @@ public class Parser {
 		MethodDeclList mtdl = new MethodDeclList(); 
 		FieldDecl fd = null;
 		
-		Token new_token = new Token(TokenKind.PREDEFINED, "_PrintStream");
+		Token new_token = new Token(TokenKind.PREDEFINED, "_PrintStream", null);
+		// Also serves as the Class ID
 		Identifier id = new Identifier(new_token);
 		TypeDenoter td = new ClassType(id, null);
 		fd = new FieldDecl(false, true, td, "out", null);
 		fdl.add(fd);
-		cd = new ClassDecl("System", fdl, mtdl, null);
+		cd = new ClassDecl("System", id, fdl, mtdl, null);
 		return cd;
 	}
 	
@@ -96,15 +97,23 @@ public class Parser {
 		
 		MethodDecl md = new MethodDecl(fd, pdl, sl, null);
 		mtdl.add(md);
-		cd = new ClassDecl("_PrintStream", fdl, mtdl, null);
+		
+		// Class Id
+		Token new_token = new Token(TokenKind.ID, "_PrintStream", null);
+		Identifier id = new Identifier(new_token);
+		cd = new ClassDecl("_PrintStream",id, fdl, mtdl, null);
 		return cd;
 	}
 	
 	public ClassDecl addPredefinedString() {
 		ClassDecl cd = null;
 		FieldDeclList fdl = new FieldDeclList();
-		MethodDeclList mtdl = new MethodDeclList(); 
-		cd = new ClassDecl("String", fdl, mtdl, null);
+		MethodDeclList mtdl = new MethodDeclList();
+
+		// Class Id
+		Token new_token = new Token(TokenKind.ID, "String", null);
+		Identifier id = new Identifier(new_token);
+		cd = new ClassDecl("String", id, fdl, mtdl, null);
 		return cd;
 	}
 	
@@ -122,6 +131,9 @@ public class Parser {
 		
 		//classname
 		String cn =  token.spelling;
+		//Class ID
+		Identifier classid = new Identifier(token);
+		
 		accept(TokenKind.ID);
 		accept(TokenKind.LCURBRACK);
 		while(token.kind != TokenKind.RCURBRACK) {	
@@ -234,7 +246,7 @@ public class Parser {
 		}
 		accept(TokenKind.RCURBRACK);
 		endPos(cdSp);
-		cd  =  new ClassDecl(cn, fdl, mtdl, cdSp);
+		cd  =  new ClassDecl(cn, classid, fdl, mtdl, cdSp);
 		return cd;
 	}
 	

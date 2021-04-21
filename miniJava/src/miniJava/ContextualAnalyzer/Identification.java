@@ -8,6 +8,10 @@ public class Identification implements Visitor<Object, Object> {
 	public IdentificationTable table;
 	private ErrorReporter reporter;
 	public ClassDecl currentClassDecl;
+	private boolean inStatic; // a boolean that judges if in a static method
+	public Statement currentStatement; // a variable that serves for the VarDecl initializing check
+	public boolean hasMain;
+	private boolean visitLHS;
 	
 	public Identification(Package ast, ErrorReporter reporter) {
 		this.reporter = reporter;
@@ -61,8 +65,25 @@ public class Identification implements Visitor<Object, Object> {
 		}
 		for(MethodDecl md: cd.methodDeclList) {
 			if(table.nameExistsCurrentScope(md.name)) {
-				reporter.reportError(""+md.posn.toString()+" Method name already exists.");
+				reporter.reportError(""+md.posn.toString()+" Duplicate method: method name already exists.");
 				System.exit(4);
+			}
+			if(!md.isPrivate && md.isStatic && md.name.equals("main") && md.type.typeKind == TypeKind.VOID) {
+				if(hasMain) {
+					reporter.reportError(""+md.posn.toString()+" One program can only have one unique public static void main method");
+					System.exit(4);
+				}
+				else {
+					if(md.parameterDeclList != null && md.parameterDeclList.size() == 1 && md.parameterDeclList.get(0).type instanceof ArrayType
+							&& ((ArrayType) md.parameterDeclList.get(0).type).eltType instanceof ClassType 
+							&& ((ClassType) ((ArrayType) md.parameterDeclList.get(0).type).eltType).className.spelling.equals("String")) {
+						this.hasMain = true;
+					}
+					else {
+						reporter.reportError(""+md.posn.toString()+" Incorrect format of public static void main method");
+						System.exit(4);
+					}
+				}
 			}
 			table.enter(md);
 			//cd.memberTable.put(md.name, md);
@@ -90,6 +111,7 @@ public class Identification implements Visitor<Object, Object> {
 	@Override
 	public Object visitMethodDecl(MethodDecl md, Object arg) {
 		// TODO Auto-generated method stub
+		inStatic = md.isStatic;
 		md.type.visit(this, null);
 		// level 3
 		table.openScope();
@@ -100,6 +122,7 @@ public class Identification implements Visitor<Object, Object> {
 		// level 4
 		table.openScope();
 		for(Statement st: md.statementList) {
+			this.currentStatement = st;
 			st.visit(this, null);
 		}
 		table.closeScope();
@@ -110,6 +133,7 @@ public class Identification implements Visitor<Object, Object> {
 	@Override
 	public Object visitParameterDecl(ParameterDecl pd, Object arg) {
 		// TODO Auto-generated method stub
+		pd.type.visit(this, null);
 		if(table.nameExistsLocalScope(pd.name)) {
 			reporter.reportError(""+pd.posn.toString()+" Variable name already exists in this local scope.");
 			System.exit(4);
@@ -120,6 +144,7 @@ public class Identification implements Visitor<Object, Object> {
 
 	@Override
 	public Object visitVarDecl(VarDecl decl, Object arg) {
+		decl.type.visit(this, null);
 		// TODO Auto-generated method stub
 		if(table.nameExistsLocalScope(decl.name)) {
 			reporter.reportError(""+decl.posn.toString()+" Variable name already exists in this local scope.");
@@ -139,8 +164,20 @@ public class Identification implements Visitor<Object, Object> {
 	public Object visitClassType(ClassType type, Object arg) {
 		// TODO Auto-generated method stub
 		
-		type.className.visit(this, null);
-		return null;
+		/*type.className.visit(this, null);
+		if(type.className.decl == null || !(type.className.decl instanceof ClassDecl)) {
+			reporter.reportError(type.posn + " Expecting an already declared class.");
+			System.exit(4);
+		}
+		
+		return null;*/
+		ClassDecl classDecl = (ClassDecl) this.table.findClass(type.className.spelling);
+        if (classDecl == null) {
+            reporter.reportError(type.posn.toString() + ": Expected a class name");
+        } else {
+            type.className.decl = classDecl;
+        }
+        return null;
 	}
 
 	@Override
@@ -157,6 +194,7 @@ public class Identification implements Visitor<Object, Object> {
 		// level 4+
 		table.openScope();
 		for(Statement s: stmt.sl) {
+			this.currentStatement = s;
 			s.visit(this, null);
 		}
 		table.closeScope();
@@ -166,12 +204,12 @@ public class Identification implements Visitor<Object, Object> {
 	@Override
 	public Object visitVardeclStmt(VarDeclStmt stmt, Object arg) {
 		// TODO Auto-generated method stub
+		stmt.varDecl.visit(this, null);
 		stmt.initExp.visit(this, null);
 		if(stmt.initExp instanceof RefExpr && ((RefExpr)stmt.initExp).ref instanceof ThisRef) {
 			stmt.varDecl.thisRef = true;
 		}
-		stmt.varDecl.visit(this, null);
-
+		
 		
 		return null;
 	}
@@ -179,7 +217,9 @@ public class Identification implements Visitor<Object, Object> {
 	@Override
 	public Object visitAssignStmt(AssignStmt stmt, Object arg) {
 		// TODO Auto-generated method stub
+		this.visitLHS = true;
 		stmt.ref.visit(this, null);
+		this.visitLHS = false;
 		stmt.val.visit(this, null);
 		return null;
 	}
@@ -187,8 +227,10 @@ public class Identification implements Visitor<Object, Object> {
 	@Override
 	public Object visitIxAssignStmt(IxAssignStmt stmt, Object arg) {
 		// TODO Auto-generated method stub
+		this.visitLHS = true;
 		stmt.ref.visit(this, null);
 		stmt.ix.visit(this, null);
+		this.visitLHS = false;
 		stmt.exp.visit(this, null);
 		return null;
 	}
@@ -218,11 +260,19 @@ public class Identification implements Visitor<Object, Object> {
 		// TODO Auto-generated method stub
 		stmt.cond.visit(this, null);
 		// thenstmt
+		if(stmt.thenStmt instanceof VarDeclStmt) {
+			reporter.reportError(stmt.thenStmt.posn+" A variable declaration cannot be the solitary statement in a branch of a conditional statement.");
+			System.exit(4);
+		}
 		table.openScope();
 		stmt.thenStmt.visit(this, null);
 		table.closeScope();
 		// elsestmt
 		if(stmt.elseStmt != null) {
+			if(stmt.elseStmt instanceof VarDeclStmt) {
+				reporter.reportError(stmt.elseStmt.posn+" A variable declaration cannot be the solitary statement in a branch of a conditional statement.");
+				System.exit(4);
+			}
 			table.openScope();
 			stmt.elseStmt.visit(this, null);
 			table.closeScope();
@@ -235,6 +285,10 @@ public class Identification implements Visitor<Object, Object> {
 	public Object visitWhileStmt(WhileStmt stmt, Object arg) {
 		// TODO Auto-generated method stub
 		stmt.cond.visit(this, null);
+		if(stmt.body instanceof VarDeclStmt) {
+			reporter.reportError(stmt.body.posn+" A variable declaration cannot be the solitary statement in a branch of a conditional statement.");
+			System.exit(4);
+		}
 		table.openScope();
 		stmt.body.visit(this, null);
 		table.closeScope();
@@ -262,6 +316,10 @@ public class Identification implements Visitor<Object, Object> {
 	public Object visitRefExpr(RefExpr expr, Object arg) {
 		// TODO Auto-generated method stub
 		expr.ref.visit(this, null);
+		if(expr.ref instanceof IdRef && (expr.ref.decl instanceof ClassDecl || expr.ref.decl instanceof MethodDecl)) {
+			reporter.reportError(expr.posn.toString()+" Can't reference a class or method only(in the form of IdRef) in RefExpr");
+			System.exit(4);
+		}
 		return null;
 	}
 
@@ -308,8 +366,11 @@ public class Identification implements Visitor<Object, Object> {
 	@Override
 	public Object visitThisRef(ThisRef ref, Object arg) {
 		// TODO Auto-generated method stub
+		if(inStatic) {
+			reporter.reportError(ref.posn+" Cannot reference \"this\" within a static context");
+			System.exit(4);
+		}
 		ref.decl = currentClassDecl;
-		// ref.id.decl = currentClassDecl;
 		
 		return null;
 	}
@@ -323,6 +384,16 @@ public class Identification implements Visitor<Object, Object> {
 			reporter.reportError(""+ref.id.posn.toString()+" " + ref.id.spelling + " is not declared or found");
 			System.exit(4);
 		}
+		if(temp instanceof MemberDecl) {
+			if(((MemberDecl) temp).isStatic != inStatic) {
+				reporter.reportError(""+ref.id.posn.toString() + "Cannot reference non-static ref " + ref.id.spelling +" in static context");
+				System.exit(4);
+			}
+		}
+		if(temp instanceof VarDecl && this.currentStatement instanceof VarDeclStmt && temp == ((VarDeclStmt) this.currentStatement).varDecl) {
+			reporter.reportError("" +ref.id.posn.toString() + "Cannot reference " + ref.id.spelling +" within the initializing expression of the declaration for " + ref.id.spelling);
+			System.exit(4);
+		}
 		ref.decl = table.retrieve(ref.id.spelling);
 		return null;
 	}
@@ -333,6 +404,18 @@ public class Identification implements Visitor<Object, Object> {
 		Reference subref = ref.ref;
 		Identifier subid = ref.id;
 		subref.visit(this, null);
+		
+		if(subref.decl == null) {
+			reporter.reportError("" + subref.posn.toString() + "Can't find the corresponding field or field not declared");
+			System.exit(4);
+		}
+		
+		// Can't have method in the middle of the QualRef
+		if(subref.decl instanceof MethodDecl) {
+			reporter.reportError("" + subref.posn.toString() + "Can't have method" + subref.id.spelling + "in the middle of the QualRef");
+			System.exit(4);
+		}
+		
 		
 		// debug
 		// case: a.b.c (where a is an object)
@@ -351,6 +434,15 @@ public class Identification implements Visitor<Object, Object> {
 				System.exit(4);
 			}
 		}
+		// Edge case 2: ArrayRef
+		else if(subref.decl.type instanceof ArrayType && subid.spelling.equals("length")){
+			// array.length can't show up at the LHS of assignstmt
+			if(this.visitLHS) {
+				reporter.reportError("" + subid.posn.toString() + " Array.length can't show up at the LHS of assignstmt");
+			}
+			subid.decl = new FieldDecl(false, true, new BaseType(TypeKind.INT, null), "length", null);
+			return null;
+		}
 		else {
 			// If it's a class, then find its class name directly
 			if(subref.id.decl instanceof ClassDecl) {
@@ -358,12 +450,21 @@ public class Identification implements Visitor<Object, Object> {
 			}
 			// If its' an instance of a class, find its class name via ClassType.className
 			else if(subref.id.decl instanceof VarDecl) {
-				ClassType c = (ClassType) subref.id.decl.type;
-				if(c == null) {
-					reporter.reportError("" + subref.id.posn.toString() + "Error casting to type(ClassType) or not found");
+				// Case 1: subref is a ClassType
+				if(subref.id.decl.type instanceof ClassType) {
+					ClassType c = (ClassType) subref.id.decl.type;
+					if(c == null) {
+						reporter.reportError("" + subref.id.posn.toString() + "Error casting to type(ClassType) or not found");
+						System.exit(4);
+					}
+					name = c.className.spelling;
+				}
+				// Case 2: subref is other type. eg: BaseType "Int"
+				else {
+					reporter.reportError("" + subref.id.posn.toString() + "Reference other than ClassType can't be qualified");
 					System.exit(4);
 				}
-				name = c.className.spelling;
+				
 			}
 			// edge case: not a class nor an instance of the class
 			else {
@@ -375,7 +476,7 @@ public class Identification implements Visitor<Object, Object> {
 		
 		Declaration temp = table.retrieve(name);
 		if(temp == null) {
-			reporter.reportError(""+subref.posn.toString()+" " + "class or instance is not declared or found");
+			reporter.reportError(""+subref.posn.toString()+" " + "Class or instance is not declared or found");
 			System.exit(4);
 		}
 		ClassDecl cd = (ClassDecl) table.retrieve(name);
@@ -390,11 +491,8 @@ public class Identification implements Visitor<Object, Object> {
 			System.exit(4);
 		}
 		
-		// ref.decl is supposed to be a member declaration
+		// ref.decl is supposed to be a field declaration
 		ref.decl = cd.memberTable.get(subid.spelling);
-		/*if(ref.decl.type == null) {
-			System.out.println("error");
-		}*/
 		
 		// Visibility check
 		// first cast to md to access isStatic
@@ -403,13 +501,37 @@ public class Identification implements Visitor<Object, Object> {
 			reporter.reportError("" + ref.decl.posn.toString() + "Error casting to type(MemberDecl)");
 			System.exit(4);
 		}
-		// Visibility should be checked except for this reference
-		if(!(subref instanceof ThisRef)) {
-			if(!(subref.decl instanceof VarDecl && ((VarDecl) subref.decl).thisRef)) {
-				if(md.isPrivate) {
+		// Visibility Check
+		// Private is only allowed to be accessed if the private member is a member of the currentClass
+		if(md.isPrivate) {
+			// Case 1: ThisRef
+			if(subref instanceof ThisRef && subref.decl == this.currentClassDecl) {
+				// All good, nothing happens
+			}
+			// Case 2: a class itself
+			else if(subref.id.decl instanceof ClassDecl && subref.id.decl == this.currentClassDecl) {
+				if(subref.id.decl == this.currentClassDecl || subref.id.decl.name.equals(this.currentClassDecl.name)) {
+					// All good, nothing happens
+				}
+				else {
 					reporter.reportError("" + ref.decl.posn.toString() +"Error: member variable is private");
 					System.exit(4);
 				}
+				
+			}
+			else if(subref.id.decl instanceof Declaration) {
+				// Case 3: a parameter, a variable declared, or a field of type currentClass
+				if(subref.id.decl.type != null && ((ClassType) subref.id.decl.type).className.spelling.equals(this.currentClassDecl.name)) {
+					// All good, nothing happens
+				}
+				else {
+					reporter.reportError("" + ref.decl.posn.toString() +"Error: member variable is private");
+					System.exit(4);
+				}
+			}
+			else {
+				reporter.reportError("" + ref.decl.posn.toString() +"Error: member variable is private");
+				System.exit(4);
 			}
 		}
 		
@@ -453,6 +575,16 @@ public class Identification implements Visitor<Object, Object> {
 		Declaration temp = table.retrieve(id.spelling);
 		if(temp == null) {
 			reporter.reportError(""+id.posn.toString()+" " + id.spelling + " is not declared or found");
+			System.exit(4);
+		}
+		if(temp instanceof MemberDecl) {
+			if(((MemberDecl) temp).isStatic != inStatic) {
+				reporter.reportError("" +id.posn.toString() + "Cannot reference non-static id " + id.spelling +" in static context");
+				System.exit(4);
+			}
+		}
+		if(temp instanceof VarDecl && this.currentStatement instanceof VarDeclStmt && temp == ((VarDeclStmt) this.currentStatement).varDecl) {
+			reporter.reportError("" +id.posn.toString() + "Cannot reference " + id.spelling +" within the initializing expression of the declaration for " + id.spelling);
 			System.exit(4);
 		}
 		id.decl = table.retrieve(id.spelling);

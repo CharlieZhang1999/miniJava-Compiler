@@ -60,6 +60,14 @@ public class IdentificationTable {
 		return null;
 	}
 	
+	public Declaration findClass(String s) {
+		if(idStack.size() > 0) {
+			if(idStack.get(0).containsKey(s)) {
+				return idStack.get(0).get(s);
+			}
+		}
+		return null;
+	}
 	public void openScope() {
 		HashMap<String, Declaration> idTable = new HashMap<>();
 		idStack.push(idTable);

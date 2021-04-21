@@ -54,6 +54,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter>  {
 
 	@Override
 	public TypeDenoter visitMethodDecl(MethodDecl md, Object arg) {
+		// boolean hasReturned = false;
 		// TODO Auto-generated method stub
 		for(ParameterDecl pd: md.parameterDeclList) {
 			pd.visit(this, null);
@@ -87,7 +88,7 @@ public class TypeChecking implements Visitor<Object, TypeDenoter>  {
             reporter.reportError(""+ pd.posn.toString()+ "variable can't be of type VOID");
         }
 		pd.type = pd.type.visit(this, null);
-		return null;
+		return pd.type;
 	}
 
 	@Override
@@ -408,6 +409,9 @@ public class TypeChecking implements Visitor<Object, TypeDenoter>  {
 	@Override
 	public TypeDenoter visitThisRef(ThisRef ref, Object arg) {
 		// TODO Auto-generated method stub
+		if(ref.id == null) {
+			return ref.decl.type.visit(this, null);
+		}
 		return ref.id.visit(this, null);
 	}
 
@@ -430,11 +434,15 @@ public class TypeChecking implements Visitor<Object, TypeDenoter>  {
 			reporter.reportError("" + id.posn.toString()+" Identifier's declaration is not detected ");
 			return new BaseType(TypeKind.ERROR, new SourcePosition());
 		}
-		if(id.decl instanceof ClassDecl || id.decl.type == null) {
+		if(id.decl.type == null) {
 			reporter.reportError("" + id.posn.toString()+" Identifier's declaration's type is not clear ");
 			return new BaseType(TypeKind.ERROR, new SourcePosition());
 		}
-		else if(id.decl instanceof VarDecl || id.decl instanceof FieldDecl) {
+		else if(id.decl instanceof ClassDecl) {
+			return id.decl.type;
+			// return new ClassType(id, id.posn);
+		}
+		else if(id.decl instanceof VarDecl || id.decl instanceof FieldDecl || id.decl instanceof ParameterDecl) {
 			if(id.decl.type.typeKind == TypeKind.UNSUPPORTED || id.decl.type.typeKind == TypeKind.ERROR) {
 				reporter.reportError(""+ id.posn.toString()+ "Found ERROR type or UNSUPPORTED type");
 				return new BaseType(TypeKind.ERROR, new SourcePosition());

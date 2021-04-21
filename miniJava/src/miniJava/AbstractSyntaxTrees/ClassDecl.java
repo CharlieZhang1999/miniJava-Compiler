@@ -10,8 +10,8 @@ import java.util.*;
 
 public class ClassDecl extends Declaration {
 
-  public ClassDecl(String cn, FieldDeclList fdl, MethodDeclList mdl, SourcePosition posn) {
-	  super(cn, null, posn);
+  public ClassDecl(String cn, Identifier id, FieldDeclList fdl, MethodDeclList mdl, SourcePosition posn) {
+	  super(cn, new ClassType(id, id.posn), posn);
 	  fieldDeclList = fdl;
 	  methodDeclList = mdl;
 	  memberTable = new HashMap<>();
