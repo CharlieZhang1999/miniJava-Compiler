@@ -36,6 +36,11 @@ public class Identification implements Visitor<Object, Object> {
 			currentClassDecl = cd;
 			cd.visit(this, null);
 		}
+		
+		if(!hasMain) {
+			reporter.reportError(prog.posn.toString()+ " sourcefile lacks a suitable main method");
+			System.exit(4);
+		}
 		table.closeScope();
 		return null;
 	}
@@ -441,6 +446,7 @@ public class Identification implements Visitor<Object, Object> {
 				reporter.reportError("" + subid.posn.toString() + " Array.length can't show up at the LHS of assignstmt");
 			}
 			subid.decl = new FieldDecl(false, true, new BaseType(TypeKind.INT, null), "length", null);
+			ref.decl = new FieldDecl(false, true, new BaseType(TypeKind.INT, null), "length", null);
 			return null;
 		}
 		else {
@@ -449,7 +455,7 @@ public class Identification implements Visitor<Object, Object> {
 				name = subref.id.decl.name;
 			}
 			// If its' an instance of a class, find its class name via ClassType.className
-			else if(subref.id.decl instanceof VarDecl) {
+			else if(subref.id.decl instanceof VarDecl || subref.id.decl instanceof FieldDecl || subref.id.decl instanceof ParameterDecl ) {
 				// Case 1: subref is a ClassType
 				if(subref.id.decl.type instanceof ClassType) {
 					ClassType c = (ClassType) subref.id.decl.type;
@@ -587,6 +593,7 @@ public class Identification implements Visitor<Object, Object> {
 			reporter.reportError("" +id.posn.toString() + "Cannot reference " + id.spelling +" within the initializing expression of the declaration for " + id.spelling);
 			System.exit(4);
 		}
+		
 		id.decl = table.retrieve(id.spelling);
 		return null;
 	}

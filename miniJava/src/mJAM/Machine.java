@@ -191,7 +191,6 @@ private static void emit (int op, int n, int r, int d) {
     Instruction nextInstr = new Instruction(op, n, r, d);
         Machine.code[CT] = nextInstr;
         CT = CT + 1;
-        System.out.println("emit "+op+ " "+n+" "+d);
   }
 
 /**

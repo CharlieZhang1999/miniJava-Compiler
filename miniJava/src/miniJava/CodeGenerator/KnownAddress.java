@@ -1,11 +1,10 @@
 package miniJava.CodeGenerator;
 
-public class KnownAddress extends RuntimeEntity{
-	public int address;
-	KnownAddress(int size, int address) {
-		super(size);
+public class KnownAddress extends KnownOffset {
+
+	KnownAddress(int size, int offset) {
+		super(size, offset);
 		// TODO Auto-generated constructor stub
-		this.address = address;
-	}	
+	}
 
 }

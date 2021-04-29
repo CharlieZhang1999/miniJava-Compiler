@@ -12,12 +12,15 @@ import mJAM.Machine.Op;
 import mJAM.Machine.Prim;
 import mJAM.Machine.Reg;
 public class CodeGenerator implements Visitor<Object, Object>{
-	private ErrorReporter reporter;
-	private int static_offset;
-	private int localVariableOffset;
-	private int patchAddr_Call_main;
-	private MethodDecl currentMethodDecl;
-	private HashMap<MethodDecl, ArrayList<Integer>> map;
+	public ErrorReporter reporter;
+	public int static_offset;
+	public int localVariableOffset;
+	public int patchAddr_Call_main;
+	public MethodDecl currentMethodDecl;
+	public HashMap<MethodDecl, ArrayList<Integer>> map;
+	public boolean visitLHS;
+	public int qrefLayer;
+	public Declaration printlndecl = null;
 	
 	public CodeGenerator(Package ast, ErrorReporter reporter){
 		this.reporter = reporter;
@@ -29,15 +32,24 @@ public class CodeGenerator implements Visitor<Object, Object>{
 	@Override
 	public Object visitPackage(Package prog, Object arg) {
 		// TODO Auto-generated method stub
-		/*for(ClassDecl cd: prog.classDeclList) {
+		this.static_offset = 0;
+		for(ClassDecl cd: prog.classDeclList) {
+			if (cd.name.equals("_PrintStream")) {
+				for (MethodDecl md: cd.methodDeclList) {
+					if (md.name.equals("println")) {
+						this.printlndecl = md;
+					}
+				}
+			}
 			for(FieldDecl fd: cd.fieldDeclList) {
 				if(fd.isStatic) {
 					Machine.emit(Machine.Op.PUSH, 1);
-					fd.runtimeentity = new Address(Machine.characterSize, static_offset);
+					fd.runtimeentity = new KnownOffset(Machine.characterSize, static_offset);
+					//System.out.println(fd.name+" is stored at offset "+static_offset);
 					static_offset++;
 				}
 			}
-		}*/
+		}
 		
 		
 		// visit main 
@@ -55,20 +67,15 @@ public class CodeGenerator implements Visitor<Object, Object>{
 			int fieldOffset = 0;
 			for(int fieldCount = 0; fieldCount < cd.fieldDeclList.size(); fieldCount++) {
 				
-				if(cd.fieldDeclList.get(fieldCount).isStatic) {
-					KnownAddress fieldAddress = new KnownAddress(Machine.addressSize, staticfieldOffset);
-					staticfieldOffset++;
-					cd.fieldDeclList.get(fieldCount).visit(this, fieldAddress);
-				}
-				else {
-					KnownAddress fieldAddress = new KnownAddress(Machine.addressSize, fieldOffset);
+				if(!cd.fieldDeclList.get(fieldCount).isStatic) {
+					KnownOffset fieldAddress = new KnownOffset(Machine.addressSize, fieldOffset);
 					fieldOffset++;
 					cd.fieldDeclList.get(fieldCount).visit(this, fieldAddress);
 				}
 				
 			}
 			// Debug: IDK what i'm doing rn
-			cd.runtimeentity = new KnownAddress(cd.fieldDeclList.size()-staticfieldOffset, staticfieldOffset+1);
+			cd.runtimeentity = new KnownOffset(cd.fieldDeclList.size()-staticfieldOffset, staticfieldOffset+1);
 		}
 		
 		// visit all classses
@@ -79,46 +86,12 @@ public class CodeGenerator implements Visitor<Object, Object>{
 		// patch done here
 		for(MethodDecl md: map.keySet()) {
 			for(int callStmtAddress: map.get(md)) {
-				Machine.patch(callStmtAddress, ((KnownAddress) md.runtimeentity).address);
+				Machine.patch(callStmtAddress, ((KnownOffset) md.runtimeentity).offset);
 			}
 		}
 		
 		
 		// copy and paste debugger here 
-		/*
-		 * write code to object code file (.mJAM)
-		 */
-		String objectCodeFileName = "Counter.mJAM";
-		ObjectFile objF = new ObjectFile(objectCodeFileName);
-		System.out.print("Writing object code file " + objectCodeFileName + " ... ");
-		if (objF.write()) {
-			System.out.println("FAILED!");
-			return null;
-		}
-		else
-			System.out.println("SUCCEEDED");	
-
-		 // create asm file corresponding to object code using disassembler 
-        String asmCodeFileName = objectCodeFileName.replace(".mJAM",".asm");
-        System.out.print("Writing assembly file " + asmCodeFileName + " ... ");
-        Disassembler d = new Disassembler(objectCodeFileName);
-        if (d.disassemble()) {
-                System.out.println("FAILED!");
-                return null;
-        }
-        else
-                System.out.println("SUCCEEDED");
-
-	/* 
-	 * run code using debugger
-	 * 
-	 */
-        System.out.println("Running code in debugger ... ");
-        Interpreter.debug(objectCodeFileName, asmCodeFileName);
-
-        System.out.println("*** mJAM execution completed");
-
-		
 		return null;
 	}
 
@@ -142,7 +115,7 @@ public class CodeGenerator implements Visitor<Object, Object>{
 	@Override
 	public Object visitMethodDecl(MethodDecl md, Object arg) {
 		// TODO Auto-generated method stub
-		md.runtimeentity = new KnownAddress(Machine.addressSize, Machine.nextInstrAddr());
+		md.runtimeentity = new KnownOffset(Machine.addressSize, Machine.nextInstrAddr());
 		this.currentMethodDecl = md;
 		// edge case: main method
 		if(md.name.equals("main")) {
@@ -152,8 +125,9 @@ public class CodeGenerator implements Visitor<Object, Object>{
 		// initialize paramOffset
 		int paramOffset = -1 * md.parameterDeclList.size();
 		for(ParameterDecl pd: md.parameterDeclList) {
-			KnownAddress paramAddress = new KnownAddress(Machine.addressSize, paramOffset);
+			KnownOffset paramAddress = new KnownOffset(Machine.addressSize, paramOffset);
 			pd.visit(this, paramAddress);
+			paramOffset++;
 		}
 		
 		// reinitialize loalVariableOffset
@@ -206,22 +180,40 @@ public class CodeGenerator implements Visitor<Object, Object>{
 	@Override
 	public Object visitBlockStmt(BlockStmt stmt, Object arg) {
 		// TODO Auto-generated method stub
+		int currentLocalOffset = this.localVariableOffset;
 		for(Statement s: stmt.sl) {
 			s.visit(this, null);
 		}
+		int afterLocalOffset = this.localVariableOffset;
+		
+		this.localVariableOffset = currentLocalOffset;
+		Machine.emit(Op.POP,afterLocalOffset - currentLocalOffset);
 		return null;
+				
+		
+		/*int numVar = 0;
+		for(Statement s: stmt.sl) {
+			if(s instanceof VarDeclStmt) {
+				numVar++;
+			}
+			s.visit(this, null);
+		}
+		Machine.emit(Op.POP, 0, 0, numVar);
+		this.localVariableOffset -= numVar;
+		return null;*/
 	}
 
 	@Override
 	public Object visitVardeclStmt(VarDeclStmt stmt, Object arg) {
 		// TODO Auto-generated method stub
-		KnownAddress localVarAddress = new KnownAddress(Machine.addressSize, this.localVariableOffset);
+		KnownOffset localVarAddress = new KnownOffset(Machine.addressSize, this.localVariableOffset);
 		stmt.varDecl.visit(this, localVarAddress);
 		stmt.initExp.visit(this, null);
 		// BaseType Decl
 		if(stmt.varDecl.type instanceof BaseType) {
 			if(stmt.varDecl.type.typeKind == TypeKind.INT || stmt.varDecl.type.typeKind == TypeKind.BOOLEAN ) {
 				Machine.emit(Op.STORE, Reg.LB, this.localVariableOffset);
+				Machine.emit(Op.LOAD, Reg.LB, this.localVariableOffset);
 			}
 		}
 		this.localVariableOffset++;
@@ -232,20 +224,20 @@ public class CodeGenerator implements Visitor<Object, Object>{
 	@Override
 	public Object visitAssignStmt(AssignStmt stmt, Object arg) {
 		// TODO Auto-generated method stub
-		// RHS
-		stmt.val.visit(this, null);
-		
-		// LHS
-		stmt.ref.visit(this, null);
-		// Case 1: IdRef or QualRef
-		if(stmt.ref instanceof IdRef || stmt.ref instanceof QualRef) {
-			KnownAddress refEntity = (KnownAddress) stmt.ref.id.decl.runtimeentity;
-			int offset = refEntity.address;
-			// Machine.emit(Machine.Op.LOAD, Reg.OB, refEntity.address);
+		// Case 1: IdRef
+		if(stmt.ref instanceof IdRef) {
+			// RHS
+			stmt.val.visit(this, null);
+			// start LHS
+			this.visitLHS = true;
+			// cstmt.ref.visit(this, null);
+			
+			KnownOffset refEntity = (KnownOffset) stmt.ref.decl.runtimeentity;
+			int offset = refEntity.offset;
 			
 			// Debug: isStatic 
 			if(stmt.ref.decl instanceof FieldDecl && ((FieldDecl) stmt.ref.decl).isStatic) {
-				Machine.emit(Op.STORE, Reg.SB, offset);
+					Machine.emit(Op.STORE, Reg.SB, offset);
 			}
 			else if(stmt.ref.decl instanceof FieldDecl) {
 				Machine.emit(Op.STORE, Reg.OB, offset);
@@ -253,21 +245,36 @@ public class CodeGenerator implements Visitor<Object, Object>{
 			else if(stmt.ref.decl instanceof VarDecl) {
 				Machine.emit(Op.STORE, Reg.LB, offset);
 			}
-			// should we check if it's a ParameterDecl? 
-			// Debug
 		}
-		// Case 2: ThisRef
-		else if(stmt.ref instanceof ThisRef) {
-			KnownAddress refEntity = (KnownAddress) stmt.ref.id.decl.runtimeentity;
-			int offset = refEntity.address;
-			Machine.emit(Op.STORE, Reg.OB, offset);
-		}
-		// Case 3: unkown? 
-		// Debug
-		else {
+		// Case 2: QualRef
+		else if(stmt.ref instanceof QualRef) {
+			// start LHS
+			this.visitLHS = true;
+			this.qrefLayer = 0;
+			stmt.ref.visit(this, null);
+			// // RHS
+			stmt.val.visit(this, null);
+			KnownOffset refEntity = (KnownOffset) stmt.ref.decl.runtimeentity;
+			int offset = refEntity.offset;
+			if(stmt.ref.decl instanceof FieldDecl && ((FieldDecl) stmt.ref.decl).isStatic) {
+				Machine.emit(Op.STORE, Reg.SB, offset);
+			}
+			else if(stmt.ref.decl instanceof FieldDecl) {
+				// Debug
+				/*if(stmt.val instanceof NewObjectExpr || stmt.val instanceof NewArrayExpr) {
+					stmt.ref.decl.runtimeentity = new KnownAddress(refEntity.size, refEntity.offset);
+				}*/
+					Machine.emit(Prim.fieldupd);
+			}
 			
 		}
+		// Case 3: Unknown
+		else {
+			reporter.reportError(stmt.ref.posn.toString()+" CodeGen Error -- Ref other than IdRef and QRef can't be at the left hand side of the assignstmt");
+			System.exit(4);
+		}
 		
+		this.visitLHS = false;
 		
 		return null;
 	}
@@ -277,20 +284,24 @@ public class CodeGenerator implements Visitor<Object, Object>{
 		// TODO Auto-generated method stub
 		// LHS
 		// ArrayRef
-		if(stmt.ref instanceof IdRef && stmt.ref.decl.type instanceof ArrayType) {
-			KnownAddress refEntity = (KnownAddress) stmt.ref.visit(this, null);
-			int offset = refEntity.address;
-			// Debug: isStatic 
-			if(stmt.ref.decl instanceof FieldDecl && ((FieldDecl) stmt.ref.decl).isStatic) {
-				Machine.emit(Op.LOAD, Reg.SB, offset);
+		if(stmt.ref.decl.type instanceof ArrayType) {
+			if(stmt.ref instanceof IdRef) {
+				stmt.ref.visit(this, null);
 			}
-			else if(stmt.ref.decl instanceof FieldDecl) {
-				Machine.emit(Op.LOAD, Reg.OB, offset);
+			else if(stmt.ref instanceof QualRef) {
+				this.qrefLayer = 0;
+				stmt.ref.visit(this, null);
 			}
-			else if(stmt.ref.decl instanceof VarDecl) {
-				Machine.emit(Op.LOAD, Reg.LB, offset);
+			else {
+				reporter.reportError(stmt.ref.posn.toString() + " CodeGen Error -- ref must be type of IdRef or QRef");
+				System.exit(4);
 			}
 		}
+		else {
+			reporter.reportError(stmt.ref.posn.toString() + " CodeGen Error -- ref type must be type of ArrayType");
+			System.exit(4);
+		}
+		
 		// IxExpression
 		stmt.ix.visit(this, null);
 		
@@ -314,26 +325,30 @@ public class CodeGenerator implements Visitor<Object, Object>{
 		MethodDecl md = (MethodDecl) mr.decl;
 		if(md == null) {
 			reporter.reportError(md.posn.toString() + " Codegen Error: not method declaration");
+			System.exit(4);
 		}
 		
 		// Case 1: QualRef
 		if(stmt.methodRef instanceof QualRef) {
+			this.qrefLayer = 0;
 			Reference subref = ((QualRef) mr).ref;
 			int callStmtAddress = 0;
 			// Case : Non-static
-			if(!(subref.decl instanceof ClassDecl) && !md.isStatic) {
+			if(!md.isStatic) {
 				// Edge Case: System.out.println
-				if(md.name.equals("println") && subref instanceof QualRef && ((QualRef) subref).decl.name.equals("out")) {
+				if(stmt.methodRef.decl.equals(this.printlndecl)) {
+					Machine.emit(Prim.putintnl);
+					return null;
+				}
+				/*if(md.name.equals("println") && subref instanceof QualRef && ((QualRef) subref).decl.name.equals("out")) {
 					Reference subsubRef = ((QualRef) subref).ref;
 					if(subsubRef.id.decl.name.equals("System")) {
 						Machine.emit(Prim.putintnl);
 						return null;
 					}
-				}
+				}*/
+				
 				stmt.methodRef.visit(this, null);
-				/* Ommitted */
-				//int instanceOffset = ((KnownAddress)subref.decl.runtimeentity).address;
-				//Machine.emit(Op.LOAD, Reg.LB, instanceOffset);				
 				callStmtAddress = Machine.nextInstrAddr();
 				Machine.emit(Op.CALLI, Reg.CB, -1);
 			}
@@ -380,12 +395,17 @@ public class CodeGenerator implements Visitor<Object, Object>{
 			
 		}
 		
+		// If this is a callStmt, then the return value is meaningless since it won't be assigned to other references
+		// So we should pop it
+		if (md.type.typeKind != TypeKind.VOID) {
+			Machine.emit(Machine.Op.POP, 1);
+		}
 		return null;
 	}
 
 	@Override
 	public Object visitReturnStmt(ReturnStmt stmt, Object arg) {
-		if(stmt.returnExpr == null) {
+		if(stmt.returnExpr != null) {
 			stmt.returnExpr.visit(this, null);
 		}
 		
@@ -442,10 +462,21 @@ public class CodeGenerator implements Visitor<Object, Object>{
 
 	@Override
 	public Object visitBinaryExpr(BinaryExpr expr, Object arg) {
+		String op = expr.operator.spelling;
 		// TODO Auto-generated method stub
+		// short circuit (before visiting the second expression)
+		if(op.equals("&&") || op.equals("||")) {
+			int left = (int) expr.left.visit(this, null);
+			if(left == 0 && op.equals("&&")) {
+				return null;
+			}
+			if(left == 1 && op.equals("||")) {
+				return null;
+			}
+		}
 		expr.left.visit(this, null);
 		expr.right.visit(this, null);
-		String op = expr.operator.spelling;
+		
 		if(op.equals("+")) {
 			Machine.emit(Prim.add);
 		}
@@ -488,36 +519,10 @@ public class CodeGenerator implements Visitor<Object, Object>{
 	@Override
 	public Object visitRefExpr(RefExpr expr, Object arg) {
 		// TODO Auto-generated method stub
+		if(expr.ref instanceof QualRef) {
+			this.qrefLayer = 0;
+		}
 		expr.ref.visit(this, null);
-		
-		// KnownAddress refAddress = (KnownAddress) expr.ref.visit(this, null);
-		// int offset = refAddress.address;
-		
-		
-		/* Omitted
-		// Case 1: IdRef
-		if(expr.ref instanceof IdRef) {
-			/*if(expr.ref.decl instanceof FieldDecl && ((FieldDecl) expr.ref.decl).isStatic) {
-				Machine.emit(Op.LOAD, Reg.SB, offset);
-			}
-			else if(expr.ref.decl instanceof FieldDecl) {
-				Machine.emit(Op.LOAD, Reg.OB, offset);
-			}
-			else if(expr.ref.decl instanceof VarDecl) {
-				Machine.emit(Op.LOAD, Reg.LB, offset);
-			}
-			else if(expr.ref.decl instanceof ParameterDecl) {
-				// here offset should be negative
-				Machine.emit(Op.LOAD, Reg.LB, offset);
-			}
-			expr.ref.visit(this, null);
-		}
-		// Case 2: QualRef
-		else if(expr.ref instanceof QualRef) {
-
-		}
-		// Case 3: ThisRef
-		*/
 		return null;
 	}
 
@@ -525,23 +530,28 @@ public class CodeGenerator implements Visitor<Object, Object>{
 	public Object visitIxExpr(IxExpr expr, Object arg) {
 		// TODO Auto-generated method stub
 		// ArrayRef
-		if(expr.ref instanceof IdRef && expr.ref.decl.type instanceof ArrayType) {
-			KnownAddress refEntity = (KnownAddress) expr.ref.visit(this, null);
-			int offset = refEntity.address;
-			// Debug: isStatic 
-			if(expr.ref.decl instanceof FieldDecl && ((FieldDecl) expr.ref.decl).isStatic) {
-				Machine.emit(Op.LOAD, Reg.SB, offset);
+		if(expr.ref.decl.type instanceof ArrayType) {
+			if(expr.ref instanceof IdRef) {
+				expr.ref.visit(this, null);
 			}
-			else if(expr.ref.decl instanceof FieldDecl) {
-				Machine.emit(Op.LOAD, Reg.OB, offset);
+			else if(expr.ref instanceof QualRef) {
+				this.qrefLayer = 0;
+				expr.ref.visit(this, null);
 			}
-			else if(expr.ref.decl instanceof VarDecl) {
-				Machine.emit(Op.LOAD, Reg.LB, offset);
+			else {
+				reporter.reportError(expr.ref.posn.toString() + " CodeGen Error -- ref must be type of IdRef or QRef");
+				System.exit(4);
 			}
+		}
+		else {
+			reporter.reportError(expr.ref.posn.toString() + " CodeGen Error -- ref type must be type of ArrayType");
+			System.exit(4);
 		}
 		// Ix
 		expr.ixExpr.visit(this, null);
 		
+		//ArrayRef
+		Machine.emit(Prim.arrayref);
 		return null;
 	}
 
@@ -553,22 +563,31 @@ public class CodeGenerator implements Visitor<Object, Object>{
 			e.visit(this, null);
 		}
 		
-		MethodDecl md = (MethodDecl) expr.functionRef.decl;
+		
+		Reference mr = expr.functionRef;
+		MethodDecl md = (MethodDecl) mr.decl;
 		if(md == null) {
 			reporter.reportError(md.posn.toString() + " Codegen Error: not method declaration");
+			System.exit(4);
 		}
 		
 		// Case 1: QualRef
 		if(expr.functionRef instanceof QualRef) {
-			Reference subref = ((QualRef) expr.functionRef).ref;
+			this.qrefLayer = 0;
+			Reference subref = ((QualRef) mr).ref;
 			int callStmtAddress = 0;
 			// Case : Non-static
-			if(!(subref.decl instanceof ClassDecl) && !md.isStatic) {
-				
+			if(!md.isStatic) {
+				// Edge Case: System.out.println
+				if(md.name.equals("println") && subref instanceof QualRef && ((QualRef) subref).decl.name.equals("out")) {
+					Reference subsubRef = ((QualRef) subref).ref;
+					if(subsubRef.id.decl.name.equals("System")) {
+						reporter.reportError(expr.functionRef.posn.toString()+" System.out.println() can't be expression ");
+						System.exit(4);
+					}
+				}
 				expr.functionRef.visit(this, null);
-				/* Ommitted */
-				//int instanceOffset = ((KnownAddress)subref.decl.runtimeentity).address;
-				//Machine.emit(Op.LOAD, Reg.LB, instanceOffset);				
+			
 				callStmtAddress = Machine.nextInstrAddr();
 				Machine.emit(Op.CALLI, Reg.CB, -1);
 			}
@@ -578,6 +597,7 @@ public class CodeGenerator implements Visitor<Object, Object>{
 				callStmtAddress = Machine.nextInstrAddr();
 				Machine.emit(Op.CALL, Reg.CB, -1);
 			}
+			
 			
 			// Case 1: first call to md
 			if(!map.containsKey(md)) {
@@ -613,12 +633,17 @@ public class CodeGenerator implements Visitor<Object, Object>{
 			map.get(md).add(callStmtAddress);
 			
 		}
+		
 		return null;
 	}
 
 	@Override
 	public Object visitLiteralExpr(LiteralExpr expr, Object arg) {
-		// TODO Auto-generated method stub
+		// TODO Auto-generated method stu
+		if(expr.lit instanceof BooleanLiteral) {
+			int res = (int) expr.lit.visit(this, null);
+			return res;
+		}
 		expr.lit.visit(this, null);
 		return null;
 	}
@@ -633,6 +658,7 @@ public class CodeGenerator implements Visitor<Object, Object>{
 			Machine.emit(Prim.newobj);
 		}else {
 			reporter.reportError(expr.posn.toString() + " Codegen Error: Can't create new instance of non-class type");
+			System.exit(4);
 		}
 		
 		return null;
@@ -650,7 +676,7 @@ public class CodeGenerator implements Visitor<Object, Object>{
 	public Object visitThisRef(ThisRef ref, Object arg) {
 		// TODO Auto-generated method stub
 		RuntimeEntity res = null;
-		res = (KnownAddress) ref.decl.runtimeentity;
+		res = (KnownOffset) ref.decl.runtimeentity;
 		// Debug: 
 		Machine.emit(Op.LOADA, Reg.OB, 0);
 		return null;
@@ -663,13 +689,14 @@ public class CodeGenerator implements Visitor<Object, Object>{
 		RuntimeEntity res = null;
 		ref.id.visit(this, null);
 		Declaration temp = ref.id.decl; // or Declaration temp = ref.decl?
-		res = (KnownAddress) temp.runtimeentity;
+		res = (KnownOffset) temp.runtimeentity;
 		
-		int offset = ((KnownAddress) temp.runtimeentity).address;
+		int offset = ((KnownOffset) temp.runtimeentity).offset;
 		if(ref.decl instanceof FieldDecl && ((FieldDecl) ref.decl).isStatic) {
 			Machine.emit(Op.LOAD, Reg.SB, offset);
 		}
 		else if(ref.decl instanceof FieldDecl) {
+			//Debug
 			Machine.emit(Op.LOAD, Reg.OB, offset);
 		}
 		else if(ref.decl instanceof VarDecl) {
@@ -687,31 +714,99 @@ public class CodeGenerator implements Visitor<Object, Object>{
 	@Override
 	public Object visitQRef(QualRef ref, Object arg) {
 		// TODO Auto-generated method stub
+		this.qrefLayer--;
 		RuntimeEntity res = null;
-		res = (KnownAddress) ref.decl.runtimeentity;
-		// Case 1: FieldDecl && static
-		if(ref.id.decl instanceof FieldDecl && ref.id.decl.name.equals("length")) {
-			if(ref.ref.decl.type instanceof ArrayType) {
+		res = (KnownOffset) ref.decl.runtimeentity;
+		
+		// Edge Case: 
+		if(this.visitLHS) {
+			if(ref.decl instanceof FieldDecl && ref.decl.name.equals("length")) {
+				if(ref.ref != null && ref.ref.decl.type instanceof ArrayType) {
+					reporter.reportError(ref.posn.toString()+" Codegen Error -- array.length can't be at the left hand side of assign statement");
+					System.exit(4);
+				}
+			}
+		}
+		
+		
+		// Case 0: a = array.length
+		if(ref.decl instanceof FieldDecl && ref.decl.name.equals("length")) {
+			if(ref.ref != null && ref.ref.decl.type instanceof ArrayType) {
 				ref.ref.visit(this, null);
 				Machine.emit(Prim.arraylen);
 			}
 		}
-		else if(ref.id.decl instanceof FieldDecl && ((FieldDecl) ref.decl).isStatic) {
-			Machine.emit(Op.LOAD, Reg.SB, ((KnownAddress) ref.id.decl.runtimeentity).address);
+		else if(ref.decl instanceof FieldDecl && ((FieldDecl) ref.decl).isStatic) {
+			// Debug
+			Machine.emit(Op.LOAD, Reg.SB, ((KnownOffset) ref.decl.runtimeentity).offset);
+			// Machine.emit(Op.LOAD, Reg.SB, ((KnownOffset) ref.id.decl.runtimeentity).offset);
 		}
-		// Case 2: FieldDecl 
-		else if(ref.id.decl instanceof FieldDecl) {
-			ref.ref.visit(this, null);
-			Machine.emit(Op.LOADL, ((KnownAddress) ref.id.decl.runtimeentity).address);
-			Machine.emit(Prim.fieldref);
+		else if(ref.decl instanceof FieldDecl || ref.decl instanceof MethodDecl) {
+			// Edge Case: The start of the QualRef 
+			if(ref.ref instanceof IdRef) {
+				// Case: Implicit THIS. So manually load a's Address using LOADA and fieldref (and then load b)
+				if(ref.ref.decl instanceof FieldDecl && ((FieldDecl) ref.ref.decl).isStatic) {
+					Machine.emit(Op.LOADA, Reg.SB, 0);
+					Machine.emit(Op.LOADL, ((KnownOffset)ref.ref.decl.runtimeentity).offset);
+					Machine.emit(Prim.fieldref);
+				}
+				else if(ref.ref.decl instanceof FieldDecl) {
+					Machine.emit(Op.LOADA, Reg.OB, 0);
+					Machine.emit(Op.LOADL, ((KnownOffset)ref.ref.decl.runtimeentity).offset);
+					Machine.emit(Prim.fieldref);
+				}
+				else if(ref.ref.decl instanceof VarDecl) {
+					// Load a's address directly if a is a local variable
+					Machine.emit(Op.LOAD, Reg.LB, ((KnownOffset)ref.ref.decl.runtimeentity).offset);
+					//Machine.emit(Op.LOADL, ((KnownOffset)ref.ref.decl.runtimeentity).offset);
+					//Machine.emit(Prim.fieldref);
+				}
+				else if(ref.ref.decl instanceof ParameterDecl) {
+					// here offset should be negative
+					Machine.emit(Op.LOAD, Reg.LB, ((KnownOffset)ref.ref.decl.runtimeentity).offset);
+					//Machine.emit(Op.LOADA, Reg.LB, 0);
+					//Machine.emit(Op.LOADL, ((KnownOffset)ref.ref.decl.runtimeentity).offset);
+					//Machine.emit(Prim.fieldref);
+				}
+				// Other cases: 
+				else {
+					reporter.reportError(ref.ref.posn.toString()+" CodeGen Error -- Other decl can't be use as the head of the QRef");
+					System.exit(4);
+				}
+				
+			}
+			else {
+				ref.ref.visit(this, null);
+			}
+			
+			// Step 2:
+			// load the field offset
+
+			if(ref.decl instanceof FieldDecl) {
+				Machine.emit(Op.LOADL, ((KnownOffset) ref.decl.runtimeentity).offset);
+			}
+			
+			
+			// Step 3:
+			// if field is not the last element in the QualRef, use fieldRef to go to the field's address
+			this.qrefLayer++;
+			
+			// If at the LHS of an assignstmt, then at the last element/layer we can't use fieldref
+			if(!(ref.decl instanceof MethodDecl)) {
+				if(this.visitLHS) {
+					if(this.qrefLayer<0) {
+						Machine.emit(Prim.fieldref);
+					}
+				}
+				// But if at the RHS or in a callstmt, then we should call fieldref
+				else {
+					Machine.emit(Prim.fieldref);
+				}
+			}
+			
+			
 		}
-		// Case 3: MethodDecl eg: counter.increse(3)
-		else if(ref.id.decl instanceof MethodDecl) {
-			ref.ref.visit(this, null);
-		}
-		
 		return null;
-		// return res;
 	}
 
 	@Override
@@ -740,16 +835,18 @@ public class CodeGenerator implements Visitor<Object, Object>{
 		// TODO Auto-generated method stub
 		if(bool.spelling.equals("true")) {
 			Machine.emit(Op.LOADL, 1);
+			return 1;
 		}
 		else {
 			Machine.emit(Op.LOADL, 0);
+			return 0;
 		}
-		return null;
 	}
 
 	@Override
 	public Object visitNullLiteral(NullLiteral nullLiteral, Object arg) {
 		// TODO Auto-generated method stub
+		Machine.emit(Op.LOADL, 0);
 		return null;
 	}
 	

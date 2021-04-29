@@ -7,6 +7,9 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.InputStream;
 
+import mJAM.Disassembler;
+import mJAM.Interpreter;
+import mJAM.ObjectFile;
 import miniJava.ErrorReporter;
 import miniJava.SyntacticAnalyzer.Parser;
 import miniJava.SyntacticAnalyzer.Scanner;
@@ -41,22 +44,37 @@ public class Compiler {
 			System.exit(4);
 		}
 		System.out.println("Syntactic Analysis Succeeded! Valid program.");
+		
+		
+		System.out.println("Contextual analysis starts... ");
 		Identification id = new Identification((Package)ast, reporter);
 		IdentificationTable table = id.getTable();
 		new TypeChecking((Package) ast, reporter, table);
-		
 		if(reporter.hasErrors()) {
 			System.out.println("Contextual Analysis Failed! Invalid program.");
 			// Error parsing the file, return 4
 			System.exit(4);
 		}
+		System.out.println("Contextual Analysis Succeeded! Valid program.");
+		
+		System.out.println("Code Generation starts... ");
 		CodeGenerator cg = new CodeGenerator((Package)ast, reporter);
+		System.out.println("Code Generation Succeeded! Valid program.");
 		
-		ASTDisplay td = new ASTDisplay();
-		td.showTree(ast);
+		// ASTDisplay td = new ASTDisplay();
+		// td.showTree(ast);
+		/*
+		 * write code to object code file (.mJAM)
+		 */
 		
-		// Successfully parsing the file, return 0
-		System.exit(0);
+		String objectCodeFileName = args[0].substring(0, args[0].lastIndexOf("."));
+		ObjectFile objF = new ObjectFile(objectCodeFileName+".mJAM");
+		System.out.print("Writing object code file " + objectCodeFileName  + " ... ");
+		if (objF.write()) {
+			System.out.println("FAILED!");
+		}
+		else
+			System.out.println("SUCCEEDED");	
 
 		
 	}
