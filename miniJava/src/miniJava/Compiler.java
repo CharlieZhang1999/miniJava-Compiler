@@ -75,7 +75,42 @@ public class Compiler {
 		}
 		else
 			System.out.println("SUCCEEDED");	
+		
+		
+		/*
+		 * write code to object code file (.mJAM)
+		 */
+		/*
+		String objectCodeFileName = "Counter.mJAM";
+		ObjectFile objF = new ObjectFile(objectCodeFileName);
+		System.out.print("Writing object code file " + objectCodeFileName + " ... ");
+		if (objF.write()) {
+			System.out.println("FAILED!");
+			return;
+		}
+		else
+			System.out.println("SUCCEEDED");	
+		
+		 // create asm file corresponding to object code using disassembler 
+        String asmCodeFileName = objectCodeFileName.replace(".mJAM",".asm");
+        System.out.print("Writing assembly file " + asmCodeFileName + " ... ");
+        Disassembler d = new Disassembler(objectCodeFileName);
+        if (d.disassemble()) {
+                System.out.println("FAILED!");
+                return;
+        }
+        else
+                System.out.println("SUCCEEDED");
+        
+        /* 
+         * run code using debugger
+         * 
+         */
+		/*
+        System.out.println("Running code in debugger ... ");
+        Interpreter.debug(objectCodeFileName, asmCodeFileName);
 
+        System.out.println("*** mJAM execution completed");*/
 		
 	}
 }

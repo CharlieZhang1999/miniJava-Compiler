@@ -42,11 +42,15 @@ public class CodeGenerator implements Visitor<Object, Object>{
 				}
 			}
 			for(FieldDecl fd: cd.fieldDeclList) {
+				// Static Field
 				if(fd.isStatic) {
 					Machine.emit(Machine.Op.PUSH, 1);
 					fd.runtimeentity = new KnownOffset(Machine.characterSize, static_offset);
-					//System.out.println(fd.name+" is stored at offset "+static_offset);
+					// Static Field Initialization
 					static_offset++;
+					if(fd instanceof FieldInitialization) {
+						fd.visit(this, null);
+					}
 				}
 			}
 		}
@@ -853,6 +857,15 @@ public class CodeGenerator implements Visitor<Object, Object>{
 	// helper method
 	public static int valuation(String spelling) {
 		return Integer.parseInt(spelling);
+	}
+
+	@Override
+	public Object visitFieldInitialization(FieldInitialization fd, Object arg) {
+		// TODO Auto-generated method stub
+		fd.initialization.visit(this, null);
+		int offset = ((KnownOffset) fd.runtimeentity).offset;
+		Machine.emit(Op.STORE, Reg.SB, offset);
+		return null;
 	}
 
 }

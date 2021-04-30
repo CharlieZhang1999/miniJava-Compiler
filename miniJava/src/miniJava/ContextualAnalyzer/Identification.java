@@ -625,4 +625,11 @@ public class Identification implements Visitor<Object, Object> {
 		// TODO Auto-generated method stub
 		return null;
 	}
+
+	@Override
+	public Object visitFieldInitialization(FieldInitialization fd, Object arg) {
+		// TODO Auto-generated method stub
+		fd.initialization.visit(this, null);
+		return null;
+	}
 }

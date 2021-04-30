@@ -371,4 +371,15 @@ public class ASTDisplay implements Visitor<String,Object> {
 		show(arg, quote(nullLiteral.spelling) + " " + nullLiteral.toString());
 		return null;
 	}
+
+	@Override
+	public Object visitFieldInitialization(FieldInitialization f, String arg) {
+		// TODO Auto-generated method stub
+		show(arg, "(" + (f.isPrivate ? "private": "public") 
+    			+ (f.isStatic ? " static) " :") ") + f.toString());
+    	f.type.visit(this, indent(arg));
+    	f.initialization.visit(this, indent(arg));
+    	show(indent(arg), quote(f.name) + " fieldname");
+        return null;
+	}
 }

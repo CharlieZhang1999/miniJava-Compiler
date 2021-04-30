@@ -60,4 +60,6 @@ public interface Visitor<ArgType,ResultType> {
 
 	public ResultType visitNullLiteral(NullLiteral nullLiteral, ArgType arg);
 
+	// Added
+	public ResultType visitFieldInitialization(FieldInitialization fd, ArgType arg);
 }

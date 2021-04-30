@@ -478,6 +478,16 @@ public class TypeChecking implements Visitor<Object, TypeDenoter>  {
 		// TODO Auto-generated method stub
 		return new BaseType(TypeKind.NULL, nullLiteral.posn);
 	}
+	@Override
+	public TypeDenoter visitFieldInitialization(FieldInitialization fd, Object arg) {
+		// TODO Auto-generated method stub
+		TypeDenoter t1 = fd.type.visit(this, null);
+		TypeDenoter t2 = fd.initialization.visit(this, null);
+		if(!t1.equals(t2)) {
+			reporter.reportError(""+ fd.posn.toString()+ "Found ERROR type or UNSUPPORTED type or types on both sides are incompatible");
+		}
+		return null;
+	}
 
 	
 }

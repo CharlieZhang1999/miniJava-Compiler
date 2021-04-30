@@ -202,8 +202,12 @@ public class Parser {
 			else if(token.kind == TokenKind.INT || token.kind == TokenKind.BOOLEAN || token.kind == TokenKind.ID) {
 				td = parseType();
 				
+				// PA5
+				// SourcePosition potentialIdRefSp = new SourcePosition();
+				// Token cur = token;
 				name = token.spelling;
 				accept(TokenKind.ID);
+				// endPos(potentialIdRefSp);
 				
 				// Field Declaration
 				// done
@@ -214,6 +218,15 @@ public class Parser {
 					endPos(memberSp);
 					fd = new FieldDecl(isPrivate, isStatic, td, name, memberSp);
 					fdl.add(fd);
+				}
+				else if(token.kind == TokenKind.ASSIGNMENT && isStatic) {
+					acceptIt();
+					Expression e2 = parseExpression();
+					accept(TokenKind.SEMICOLON);
+					endPos(memberSp);
+					fd = new FieldInitialization(isPrivate, isStatic, td, name, memberSp, e2);
+					fdl.add(fd);
+					
 				}
 				// Method Declaration
 				else if(token.kind == TokenKind.LPAREN) {
@@ -240,7 +253,7 @@ public class Parser {
 					md = new MethodDecl(fd, pdl, sl, memberSp); 
 					mtdl.add(md);
 				}
-				else parseError("Neither field declaration nor method declaration");
+				else parseError("Neither field declaration nor static field initialization nor method declaration");
 			}
 			else parseError("Neither field declaration nor method declaration");
 		}
